@@ -102,7 +102,6 @@ dist
 
 # vuepress v2.x temp and cache directory
 .temp
-.cache
 
 # Docusaurus cache and generated files
 .docusaurus
@@ -143,7 +142,6 @@ artifacts
 cache_hardhat
 typechain
 
-
 # Added by cargo
-
+Cargo.lock
 /target
