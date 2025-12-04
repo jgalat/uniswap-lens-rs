@@ -33,6 +33,7 @@ include = [
 [dependencies]
 alloy = { version = "1.0.1", default-features = false, features = ["contract", "json-rpc", "rpc-types"] }
 thiserror = { version = "2", default-features = false }
+serde = { version = "1.0.228", features = ["derive"] }
 
 [dev-dependencies]
 alloy = { version = "1.0.1", default-features = false, features = ["transport-http", "reqwest"] }

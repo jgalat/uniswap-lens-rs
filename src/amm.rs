@@ -1,7 +1,9 @@
 use core::convert::TryFrom;
+use serde::{Deserialize, Serialize};
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Dex {
     UniswapV3 = 0,
     PancakeSwapV3 = 1,
