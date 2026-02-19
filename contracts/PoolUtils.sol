@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {DEX} from "./Dex.sol";
+import {IAlgebraPool} from "./interfaces/IAlgebraPool.sol";
 import {ISlipStreamCLPool} from "./interfaces/ISlipStreamCLPool.sol";
 import {FullMath} from "@aperture_finance/uni-v3-lib/src/FullMath.sol";
 import {IUniswapV3Pool, PoolCaller, V3PoolCallee} from "@aperture_finance/uni-v3-lib/src/PoolCaller.sol";
@@ -145,13 +146,19 @@ abstract contract PoolUtils {
     /// @return tickBitmap The tick bitmap
     /// @return count The number of populated ticks
     function getTickBitmapAndCount(
+        DEX dex,
         V3PoolCallee pool,
         int16 wordPosLower,
         int16 wordPosUpper
     ) internal view returns (uint256[] memory tickBitmap, uint256 count) {
         tickBitmap = new uint256[](uint16(wordPosUpper - wordPosLower + 1));
         for (int16 wordPos = wordPosLower; wordPos <= wordPosUpper; ++wordPos) {
-            uint256 bitmap = pool.tickBitmap(wordPos);
+            uint256 bitmap;
+            if (dex == DEX.Algebra) {
+                bitmap = IAlgebraPool(V3PoolCallee.unwrap(pool)).tickTable(wordPos);
+            } else {
+                bitmap = pool.tickBitmap(wordPos);
+            }
             tickBitmap[uint16(wordPos - wordPosLower)] = bitmap;
             count += LibBit.popCount(bitmap);
         }

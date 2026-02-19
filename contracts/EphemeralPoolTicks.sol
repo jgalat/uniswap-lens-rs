@@ -40,7 +40,7 @@ contract EphemeralPoolTicks is PoolUtils {
         int24 tickSpacing = IUniswapV3Pool(V3PoolCallee.unwrap(pool)).tickSpacing();
         (int16 wordPosLower, int16 wordPosUpper) = getWordPositions(tickLower, tickUpper, tickSpacing);
         unchecked {
-            (uint256[] memory tickBitmap, uint256 count) = getTickBitmapAndCount(pool, wordPosLower, wordPosUpper);
+            (uint256[] memory tickBitmap, uint256 count) = getTickBitmapAndCount(dex, pool, wordPosLower, wordPosUpper);
             // each tick occupies 4 storage slots
             slots = new Slot[](count << 2);
             // fetch populated tick data

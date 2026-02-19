@@ -9,6 +9,7 @@ pub enum Dex {
     PancakeSwapV3 = 1,
     SlipStream = 2,
     UniswapV4 = 3,
+    Algebra = 4,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,6 +32,7 @@ impl TryFrom<u8> for Dex {
             1 => Ok(Dex::PancakeSwapV3),
             2 => Ok(Dex::SlipStream),
             3 => Ok(Dex::UniswapV4),
+            4 => Ok(Dex::Algebra),
             _ => Err(DexFromU8Error),
         }
     }

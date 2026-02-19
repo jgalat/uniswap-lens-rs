@@ -120,7 +120,7 @@ where
     N: Network,
     P: Provider<N>,
 {
-    if amm == Dex::SlipStream {
+    if matches!(amm, Dex::SlipStream | Dex::Algebra) {
         return Err(Error::DexNotSupported);
     }
     get_pool_storage!(EphemeralPoolSlots::deploy_builder(provider, amm.into(), pool), block_id)
@@ -152,7 +152,7 @@ where
     N: Network,
     P: Provider<N>,
 {
-    if amm == Dex::SlipStream {
+    if matches!(amm, Dex::SlipStream | Dex::Algebra) {
         return Err(Error::DexNotSupported);
     }
     get_pool_storage!(
@@ -183,7 +183,7 @@ where
     N: Network,
     P: Provider<N>,
 {
-    if amm == Dex::SlipStream {
+    if matches!(amm, Dex::SlipStream | Dex::Algebra) {
         return Err(Error::DexNotSupported);
     }
     get_pool_storage!(
@@ -230,7 +230,7 @@ mod tests {
         tests::*,
     };
     use alloy::{
-        primitives::address, providers::MulticallBuilder, rpc::types::Filter, sol_types::SolEvent,
+        primitives::{address, U256}, providers::MulticallBuilder, rpc::types::Filter, sol_types::SolEvent,
     };
     use futures::future::join_all;
 
@@ -260,18 +260,196 @@ mod tests {
         }
         let alt_ticks = multicall.block(BLOCK_NUMBER).aggregate().await.unwrap();
 
-        for (
-            i,
-            PopulatedTick {
-                liquidityGross,
-                liquidityNet,
-                ..
-            },
-        ) in ticks.into_iter().enumerate()
-        {
+        for (i, tick) in ticks.into_iter().enumerate() {
             let tick_info = &alt_ticks[i];
-            assert_eq!(liquidityGross, tick_info.liquidityGross);
-            assert_eq!(liquidityNet, tick_info.liquidityNet);
+            assert_eq!(tick.liquidityGross, tick_info.liquidityGross);
+            assert_eq!(tick.liquidityNet, tick_info.liquidityNet);
+            assert_eq!(tick.feeGrowthOutside0X128, tick_info.feeGrowthOutside0X128);
+            assert_eq!(tick.feeGrowthOutside1X128, tick_info.feeGrowthOutside1X128);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_populated_ticks_in_range_pancakeswap_v3() {
+        // PancakeSwapV3 WETH/USDC on Ethereum
+        let pancake_pool = address!("6CA298D2983aB03Aa1da7679389D955A4eFEE15C");
+        let provider = PROVIDER.clone();
+        let pool = IUniswapV3Pool::new(pancake_pool, provider.clone());
+        let tick_current = pool.slot0().block(BLOCK_NUMBER).call().await.unwrap().tick;
+        let tick_spacing = pool.tickSpacing().block(BLOCK_NUMBER).call().await.unwrap();
+        let ticks = get_populated_ticks_in_range(
+            Dex::PancakeSwapV3,
+            pancake_pool,
+            tick_current,
+            tick_current + (tick_spacing << 8),
+            provider.clone(),
+            Some(BLOCK_NUMBER),
+        )
+        .await
+        .unwrap();
+        assert!(!ticks.is_empty());
+
+        let mut multicall = MulticallBuilder::new_dynamic(provider.clone());
+        for PopulatedTick { tick, .. } in ticks.iter() {
+            multicall = multicall.add_dynamic(pool.ticks(*tick));
+        }
+        let alt_ticks = multicall.block(BLOCK_NUMBER).aggregate().await.unwrap();
+
+        for (i, tick) in ticks.into_iter().enumerate() {
+            let tick_info = &alt_ticks[i];
+            assert_eq!(tick.liquidityGross, tick_info.liquidityGross);
+            assert_eq!(tick.liquidityNet, tick_info.liquidityNet);
+            assert_eq!(tick.feeGrowthOutside0X128, tick_info.feeGrowthOutside0X128);
+            assert_eq!(tick.feeGrowthOutside1X128, tick_info.feeGrowthOutside1X128);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_populated_ticks_in_range_slipstream() {
+        use crate::tests::{BASE_BLOCK_NUMBER, BASE_PROVIDER};
+        use alloy::sol;
+
+        sol! {
+            #[sol(rpc)]
+            interface ISlipStreamCLPool {
+                function slot0() external view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, bool unlocked);
+                function tickSpacing() external view returns (int24);
+                function ticks(int24 tick) external view returns (uint128 liquidityGross, int128 liquidityNet, int128 stakedLiquidityNet, uint256 feeGrowthOutside0X128, uint256 feeGrowthOutside1X128, uint256 rewardGrowthOutsideX128, int56 tickCumulativeOutside, uint160 secondsPerLiquidityOutsideX128, uint32 secondsOutside, bool initialized);
+            }
+        }
+
+        // Aerodrome WETH/USDC on Base
+        let aero_pool = address!("b2cc224c1c9feE385f8ad6a55b4d94E92359DC59");
+        let provider = BASE_PROVIDER.clone();
+        let pool = ISlipStreamCLPool::new(aero_pool, provider.clone());
+        let slot0 = pool.slot0().block(BASE_BLOCK_NUMBER).call().await.unwrap();
+        let tick_spacing = pool.tickSpacing().block(BASE_BLOCK_NUMBER).call().await.unwrap();
+        let ticks = get_populated_ticks_in_range(
+            Dex::SlipStream,
+            aero_pool,
+            slot0.tick,
+            slot0.tick + (tick_spacing << 8),
+            provider.clone(),
+            Some(BASE_BLOCK_NUMBER),
+        )
+        .await
+        .unwrap();
+        assert!(!ticks.is_empty());
+
+        let mut multicall = MulticallBuilder::new_dynamic(provider.clone());
+        for PopulatedTick { tick, .. } in ticks.iter() {
+            multicall = multicall.add_dynamic(pool.ticks(*tick));
+        }
+        let alt_ticks = multicall.block(BASE_BLOCK_NUMBER).aggregate().await.unwrap();
+
+        for (i, tick) in ticks.into_iter().enumerate() {
+            let tick_info = &alt_ticks[i];
+            assert_eq!(tick.liquidityGross, tick_info.liquidityGross);
+            assert_eq!(tick.liquidityNet, tick_info.liquidityNet);
+            assert_eq!(tick.feeGrowthOutside0X128, tick_info.feeGrowthOutside0X128);
+            assert_eq!(tick.feeGrowthOutside1X128, tick_info.feeGrowthOutside1X128);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_populated_ticks_in_range_algebra() {
+        use crate::tests::{BASE_BLOCK_NUMBER, BASE_PROVIDER};
+        use alloy::sol;
+
+        sol! {
+            #[sol(rpc)]
+            interface IAlgebraPool {
+                function globalState() external view returns (uint160 price, int24 tick, uint16 fee, uint16 timepointIndex, uint8 communityFeeToken0, bool unlocked);
+                function tickSpacing() external view returns (int24);
+                function ticks(int24 tick) external view returns (uint256 liquidityTotal, int128 liquidityDelta, int24 prevTick, int24 nextTick, uint256 outerFeeGrowth0Token, uint256 outerFeeGrowth1Token);
+            }
+        }
+
+        // QuickSwap WETH/USDC on Base
+        let algebra_pool = address!("5a9Ad2BB92B0B3E5C571FDD5125114E04E02be1a");
+        let provider = BASE_PROVIDER.clone();
+        let pool = IAlgebraPool::new(algebra_pool, provider.clone());
+        let state = pool.globalState().block(BASE_BLOCK_NUMBER).call().await.unwrap();
+        let tick_spacing = pool.tickSpacing().block(BASE_BLOCK_NUMBER).call().await.unwrap();
+        let ticks = get_populated_ticks_in_range(
+            Dex::Algebra,
+            algebra_pool,
+            state.tick,
+            state.tick + (tick_spacing << 8),
+            provider.clone(),
+            Some(BASE_BLOCK_NUMBER),
+        )
+        .await
+        .unwrap();
+        assert!(!ticks.is_empty());
+
+        let mut multicall = MulticallBuilder::new_dynamic(provider.clone());
+        for PopulatedTick { tick, .. } in ticks.iter() {
+            multicall = multicall.add_dynamic(pool.ticks(*tick));
+        }
+        let alt_ticks = multicall.block(BASE_BLOCK_NUMBER).aggregate().await.unwrap();
+
+        for (i, tick) in ticks.into_iter().enumerate() {
+            let tick_info = &alt_ticks[i];
+            assert_eq!(U256::from(tick.liquidityGross), tick_info.liquidityTotal);
+            assert_eq!(tick.liquidityNet, tick_info.liquidityDelta);
+            assert_eq!(tick.feeGrowthOutside0X128, tick_info.outerFeeGrowth0Token);
+            assert_eq!(tick.feeGrowthOutside1X128, tick_info.outerFeeGrowth1Token);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_populated_ticks_in_range_v4() {
+        use alloy::primitives::{aliases::I24, Uint};
+
+        // Uniswap V4 PoolManager on Ethereum
+        let pool_manager = address!("000000000004444c5dc75cB358380D2e3dE08A90");
+        // ETH/USDC pool: fee=3000, tickSpacing=60, hooks=0x0
+        let pool_key = PoolKey {
+            currency0: Address::ZERO,
+            currency1: address!("A0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
+            fee: Uint::from(3000),
+            tickSpacing: I24::unchecked_from(60),
+            hooks: Address::ZERO,
+        };
+        // tick at initialization was ~-196257, query a range around it
+        let tick_lower = I24::unchecked_from(-199_980);
+        let tick_upper = I24::unchecked_from(-193_980);
+        let ticks = get_populated_ticks_in_range_v4(
+            pool_manager,
+            pool_key,
+            tick_lower,
+            tick_upper,
+            PROVIDER.clone(),
+            Some(BLOCK_NUMBER),
+        )
+        .await
+        .unwrap();
+        assert!(!ticks.is_empty());
+        for tick in &ticks {
+            assert!(tick.tick >= tick_lower && tick.tick <= tick_upper);
+            assert!(tick.liquidityGross > 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_storage_lens_dex_not_supported() {
+        use crate::tests::{BASE_BLOCK_NUMBER, BASE_PROVIDER};
+
+        let pool = address!("0000000000000000000000000000000000000001");
+        for dex in [Dex::SlipStream, Dex::Algebra] {
+            assert!(matches!(
+                get_static_slots(dex, pool, BASE_PROVIDER.clone(), Some(BASE_BLOCK_NUMBER)).await,
+                Err(Error::DexNotSupported)
+            ));
+            assert!(matches!(
+                get_ticks_slots(dex, pool, I24::ZERO, I24::ZERO, BASE_PROVIDER.clone(), Some(BASE_BLOCK_NUMBER)).await,
+                Err(Error::DexNotSupported)
+            ));
+            assert!(matches!(
+                get_tick_bitmap_slots(dex, pool, BASE_PROVIDER.clone(), Some(BASE_BLOCK_NUMBER)).await,
+                Err(Error::DexNotSupported)
+            ));
         }
     }
 

@@ -5,5 +5,6 @@ enum DEX {
     UniswapV3,
     PancakeSwapV3,
     SlipStream,
-    UniswapV4
+    UniswapV4,
+    Algebra
 }

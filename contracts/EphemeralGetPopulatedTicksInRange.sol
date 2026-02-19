@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 import {DEX} from "./Dex.sol";
 import "./PoolUtils.sol";
+import "./interfaces/IAlgebraPool.sol";
 import "./interfaces/ISlipStreamCLPool.sol";
 
 /// @notice A lens that fetches chunks of tick data in a range for a Uniswap v3 pool without deployment
@@ -34,7 +35,7 @@ contract EphemeralGetPopulatedTicksInRange is PoolUtils {
         int24 tickSpacing = IUniswapV3Pool(V3PoolCallee.unwrap(pool)).tickSpacing();
         (int16 wordPosLower, int16 wordPosUpper) = getWordPositions(tickLower, tickUpper, tickSpacing);
         unchecked {
-            (uint256[] memory tickBitmap, uint256 count) = getTickBitmapAndCount(pool, wordPosLower, wordPosUpper);
+            (uint256[] memory tickBitmap, uint256 count) = getTickBitmapAndCount(dex, pool, wordPosLower, wordPosUpper);
             // fetch populated tick data
             populatedTicks = new PopulatedTick[](count);
             uint256 idx;
@@ -92,6 +93,19 @@ contract EphemeralGetPopulatedTicksInRange is PoolUtils {
                 ,
 
             ) = ISlipStreamCLPool(V3PoolCallee.unwrap(pool)).ticks(tick);
+        } else if (dex == DEX.Algebra) {
+            (
+                uint256 liquidityTotal,
+                int128 liquidityDelta,
+                ,
+                ,
+                uint256 outerFeeGrowth0Token,
+                uint256 outerFeeGrowth1Token
+            ) = IAlgebraPool(V3PoolCallee.unwrap(pool)).ticks(tick);
+            populatedTick.liquidityGross = uint128(liquidityTotal);
+            populatedTick.liquidityNet = liquidityDelta;
+            populatedTick.feeGrowthOutside0X128 = outerFeeGrowth0Token;
+            populatedTick.feeGrowthOutside1X128 = outerFeeGrowth1Token;
         } else {
             PoolCaller.TickInfo memory info = pool.ticks(tick);
             populatedTick.liquidityNet = info.liquidityNet;

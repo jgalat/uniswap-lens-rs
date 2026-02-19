@@ -1,6 +1,6 @@
 [package]
 name = "uniswap-lens"
-version = "0.15.0"
+version = "0.16.0"
 edition = "2021"
 authors = ["Shuhui Luo <twitter.com/aureliano_law>"]
 description = "A library for querying Uniswap V3 using ephemeral lens contracts."
@@ -36,7 +36,7 @@ thiserror = { version = "2", default-features = false }
 serde = { version = "1.0.228", features = ["derive"] }
 
 [dev-dependencies]
-alloy = { version = "1.0.1", default-features = false, features = ["transport-http", "reqwest"] }
+alloy = { version = "1.0.1", default-features = false, features = ["transport-http", "reqwest", "reqwest-default-tls"] }
 dotenv = "0.15"
 futures = "0.3"
 once_cell = "1.20"
